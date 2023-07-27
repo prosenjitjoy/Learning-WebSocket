@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Websocket Tutorial</title>
+</head>
+
+<body>
+    <div>
+        <h1>Amazing Chat Application</h1>
+        <h3 id="chatroom-header">Currently in chat: general</h3>
+        <h3 id="connection-header">Connected to Websocket: false</h3>
+
+        <form id="chatroom-selection">
+            <label for="chatroom">Chatroom:</label>
+            <input type="text" name="chatroom" id="chatroom" />
+            <input type="submit" value="Change chatroom" />
+        </form>
+
+        <div>
+            <textarea name="chatmessages" id="chatmessages" cols="50" rows="4" placeholder="Welcome to chatroom" readonly></textarea>
+        </div>
+
+        <form id="chatroom-message">
+            <label for="message">Message:</label>
+            <input type="text" name="message" id="message" />
+            <input type="submit" value="Send Message" />
+        </form>
+
+        <form id="login-form">
+            <label for="username">username:</label>
+            <input type="text" name="username" id="username">
+            <label for="password">password:</label>
+            <input type="password" name="password" id="password">
+            <input type="submit" value="Login">
+        </form>
+    </div>
+
+    <script>
+        var selectedChat = "general";
+
+        class Event {
+            constructor(type, payload) {
+                this.type = type
+                this.payload = payload
+            }
+        }
+
+        class SendMessageEvent {
+            constructor(message, from) {
+                this.message = message
+                this.from = from
+            }
+        }
+
+        class NewMessageEvent {
+            constructor(message, from, sent) {
+                this.message = message
+                this.from = from
+                this.sent = sent
+            }
+        }
+
+        class ChangeChatRoomEvent {
+            constructor(name) {
+                this.name = name
+            }
+        }
+
+
+        function routeEvent(event) {
+            if (event.type === undefined) {
+                alert("no type field in the event")
+            }
+
+            switch (event.type) {
+                case "new_message":
+                    const messageEvent = Object.assign(new NewMessageEvent, event.payload)
+                    appendChatMessage(messageEvent)
+                    break
+                default:
+                    alert("unsupported message type")
+                    break
+            }
+        }
+
+        function appendChatMessage(messageEvent) {
+            var date = new Date(messageEvent.sent)
+            const formattedMsg = `${date.toLocaleString()}: ${messageEvent.message}`
+
+            textarea = document.getElementById("chatmessages")
+            textarea.innerHTML = textarea.innerHTML + "\n" + formattedMsg
+            textarea.scrollTop = textarea.scrollHeight
+        }
+
+        function changeChatRoom() {
+            var newchat = document.getElementById("chatroom")
+            if (newchat != null && newchat.value != selectedChat) {
+                selectedChat = newchat.value
+                header = document.getElementById("chatroom-header").textContent = "Currently in chat: " + selectedChat
+
+                var changeEvent = new ChangeChatRoomEvent(selectedChat)
+
+                sendEvent("change_room", changeEvent)
+
+                textarea = document.getElementById("chatmessages")
+                textarea.innerHTML = `You changed room into: ${selectedChat}`
+            }
+            return false
+        }
+
+        function sendMessage() {
+            var newmessage = document.getElementById("message");
+            if (newmessage != null) {
+                var outgoingEvent = new SendMessageEvent(newmessage.value, "joy")
+                sendEvent("send_message", outgoingEvent)
+            }
+            return false;
+        }
+
+        function sendEvent(eventName, payload) {
+            const event = new Event(eventName, payload)
+            conn.send(JSON.stringify(event))
+        }
+
+
+
+        function login() {
+            var formData = {
+                "username": document.getElementById("username").value,
+                "password": document.getElementById("password").value
+            }
+
+            fetch("/login", {
+                method: "post",
+                body: JSON.stringify(formData),
+                mode: "cors",
+            }).then((response) => {
+                if (response.ok) {
+                    return response.json()
+                } else {
+                    throw "unauthorized"
+                }
+            }).then((data) => {
+                // we are authenticated
+                connectWebsocket(data.otp)
+            }).catch((e) => {
+                alert(e)
+            })
+
+            return false
+        }
+
+        function connectWebsocket(otp) {
+            if (window["WebSocket"]) {
+                console.log("supports websockets");
+                conn = new WebSocket("wss://" + document.location.host + "/ws?otp=" + otp);
+
+                conn.onopen = function (e) {
+                    document.getElementById("connection-header").textContent = "Connected to Websocket: true"
+                }
+
+                conn.onclose = function (e) {
+                    document.getElementById("connection-header").textContent = "Connected to Websocket: false"
+                }
+
+                conn.onmessage = function (e) {
+                    const eventData = JSON.parse(e.data)
+                    const evt = Object.assign(new Event, eventData)
+                    routeEvent(evt)
+                }
+            } else {
+                alert("Browser does not support websocket");
+            }
+        }
+
+        window.onload = function () {
+            document.getElementById("chatroom-selection").onsubmit = changeChatRoom;
+            document.getElementById("chatroom-message").onsubmit = sendMessage;
+            document.getElementById("login-form").onsubmit = login;
+
+
+        };
+    </script>
+</body>
+
+</html>
